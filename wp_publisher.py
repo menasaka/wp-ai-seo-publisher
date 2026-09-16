@@ -341,11 +341,34 @@ def publish_wordpress_post(
 
             print(f"\n✅ Post successfully published as DRAFT! (Post ID: {post_id})")
             print(f"🖼️ Featured Media ID      : {featured_media_id}")
-            print(f"🖼️ Custom Grid Images      : {media_ids_csv}")
             print(f"📁 Category Assigned      : ID {target_category_id} ({category_name})")
-            print(f"🛡️ Custom FAQ Schema       : Injected via 'custom_faq_schema' top-level payload")
             print(f"📝 WordPress Edit URL     : {edit_url}")
             print(f"🌐 Post Preview URL       : {preview_url}")
+
+            # --- Second Request: Force-Update Custom Fields via Custom Endpoint ---
+            force_meta_url = f"{WP_URL}/wp-json/custom/v1/force-meta/{post_id}"
+            force_payload = {
+                'grid_images': media_ids_csv,
+                'faq_schema': schema_script
+            }
+
+            try:
+                force_res = requests.post(
+                    force_meta_url,
+                    auth=HTTPBasicAuth(USERNAME, PASSWORD),
+                    headers=DEFAULT_HEADERS,
+                    json=force_payload,
+                    timeout=25
+                )
+
+                if force_res.status_code == 200:
+                    print(f"✨ Custom Meta Fields Force-Updated Successfully! (200 OK)")
+                    print(f"   - Grid Images (boldthemes_theme_images) : {media_ids_csv}")
+                    print(f"   - FAQ Schema (<head> script)            : Injected successfully")
+                else:
+                    print(f"⚠️ Failed to force-update custom fields: Status {force_res.status_code} - {force_res.text}")
+            except Exception as force_err:
+                print(f"⚠️ Exception during custom meta force-update request: {force_err}")
 
             # Local cleanup after successful upload
             cleanup_local_images(image_paths)
