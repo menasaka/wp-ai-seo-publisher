@@ -11,6 +11,15 @@ from wp_publisher import publish_wordpress_post
 
 load_dotenv()
 
+# Automatically bridge Streamlit Cloud Secrets into environment variables
+try:
+    if hasattr(st, "secrets"):
+        for k, v in st.secrets.items():
+            if isinstance(v, str):
+                os.environ[k] = v
+except Exception:
+    pass
+
 # Page configuration
 st.set_page_config(
     page_title="SEO Blog Publisher | My Car Collision Center",
