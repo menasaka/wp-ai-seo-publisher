@@ -237,16 +237,17 @@ def generate_faq_schema_jsonld(faq_items: list) -> str:
 def publish_wordpress_post(
     title: str,
     content: str,
-    image_paths: list,
+    image_paths: list = None,
     faq_items: list = None,
     category_name: str = "Guides",
-    category_id: int = None
+    category_id: int = None,
+    gallery_ids_csv: str = None
 ):
     """
     Publishes the blog post to WordPress strictly as a DRAFT.
     
     1. FEATURED IMAGE BINDING:
-       - Uploads images to WordPress Media Library first via /wp-json/wp/v2/media.
+       - Uploads images to WordPress Media Library first or uses provided gallery Media IDs.
        - Assigns the primary uploaded media ID to 'featured_media' and meta['_thumbnail_id'].
        
     2. CUSTOM GALLERY / IN-CONTENT IMAGES ("Images" Box via Custom PHP Interceptor):
@@ -271,20 +272,23 @@ def publish_wordpress_post(
     else:
         target_category_id = get_or_create_category(category_name or "Guides")
 
-    # Step 2: Upload all generated images to the WordPress Media Library first
-    media_ids = []
-    source_urls = []
+    # Step 2: Handle Media IDs from either gallery_ids_csv or image_paths
+    if gallery_ids_csv:
+        media_ids_csv = str(gallery_ids_csv).strip()
+        media_ids = [int(i.strip()) for i in media_ids_csv.split(",") if i.strip().isdigit()]
+        featured_media_id = media_ids[0] if media_ids else 0
+    else:
+        media_ids = []
+        source_urls = []
+        if image_paths:
+            for path in image_paths:
+                m_id, s_url = upload_image_to_wordpress(path, title)
+                if m_id:
+                    media_ids.append(m_id)
+                    source_urls.append(s_url)
 
-    for path in image_paths:
-        m_id, s_url = upload_image_to_wordpress(path, title)
-        if m_id:
-            media_ids.append(m_id)
-            source_urls.append(s_url)
-
-    # 1. Featured Image Binding (Primary Image)
-    featured_media_id = media_ids[0] if media_ids else 0
-    # Media IDs formatted strictly as a single comma-separated string (NOT a Python list)
-    media_ids_csv = ",".join(map(str, media_ids))
+        featured_media_id = media_ids[0] if media_ids else 0
+        media_ids_csv = ",".join(map(str, media_ids))
 
     # Step 3: Build clean body content (No raw <img> tags and no raw schema <script>)
     clean_body = re.sub(

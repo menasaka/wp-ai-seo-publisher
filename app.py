@@ -179,9 +179,9 @@ def main():
                 formatted_content = process_and_format_article(raw_content)
 
                 # Step 4: Generate Images
-                status_box.info("🎨 [4/5] Generating 3 unique automotive images with randomized dynamic prompts...")
+                status_box.info("🎨 [4/5] Selecting 3 photos from local images folder and applying title overlay...")
                 progress_bar.progress(75)
-                image_paths = create_unique_images(title_input, use_dalle=use_dalle)
+                image_paths = create_unique_images(title_input)
 
                 # Step 5: Publish to WordPress
                 status_box.info("🚀 [5/5] Uploading media, building Yoast SEO, FAQ Accordion & Schema, and publishing Draft to WordPress...")

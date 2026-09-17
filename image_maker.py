@@ -1,62 +1,19 @@
 import os
+import io
 import random
+import re
 import textwrap
 import requests
 from io import BytesIO
+from requests.auth import HTTPBasicAuth
 from PIL import Image, ImageDraw, ImageFont
-from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 FONT_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-Black.ttf"
 LOCAL_FONT_PATH = "Montserrat-Black.ttf"
-
-# Dynamic arrays to ensure 100% unique DALL-E images on every generation
-CAR_COLORS = [
-    "metallic candy apple red",
-    "gloss obsidian black",
-    "liquid reflex silver",
-    "pearl white metallic",
-    "midnight sapphire blue",
-    "matte gunmetal gray",
-    "emerald green metallic",
-    "champagne gold metallic"
-]
-
-CAR_TYPES = [
-    "luxury SUV",
-    "executive sports sedan",
-    "modern high-performance electric vehicle",
-    "grand touring coupe",
-    "premium crossover utility vehicle",
-    "compact luxury sedan"
-]
-
-WORKSHOP_SETTINGS = [
-    "inside a modern high-tech collision repair center with laser frame alignment racks",
-    "inside a state-of-the-art downdraft heated paint spray booth with bright ambient LED lights",
-    "in a spotless automotive body workshop next to computerized diagnostic calibration tools",
-    "in an advanced certified collision repair bay with vehicle hydraulic lifts and pristine epoxy floor",
-    "inside a professional auto paint curing and detailing station with mirror-like floor reflections"
-]
-
-CAMERA_ANGLES = [
-    "captured from a cinematic 3/4 front angle view",
-    "captured from a dramatic low-angle hero perspective",
-    "captured from a sharp 3/4 rear quarter angle showcasing immaculate body panels",
-    "captured from a sleek side profile with crisp studio automotive lighting",
-    "captured from an eye-level three-quarter perspective highlighting high-gloss paint reflection"
-]
-
-# Client-approved local fallback templates
-TEMPLATE_FILES = [
-    "blog.post--2026.jpeg",
-    "blog.post--variant1.jpeg",
-    "blog.post--variant2.jpeg"
-]
+IMAGES_DIR = "images"
 
 
 def ensure_font_exists():
@@ -107,137 +64,217 @@ def get_font(size=36):
     return ImageFont.load_default()
 
 
-def generate_dalle_images(topic_title: str, count: int = 3) -> list:
+def get_available_images(images_dir: str = IMAGES_DIR) -> list:
     """
-    Generates unique, high-resolution automotive images using OpenAI DALL-E 3.
-    Uses randomized car colors, body styles, workshop settings, and camera angles.
+    Scans the images folder for valid photo files (.jpg, .jpeg, .png).
     """
-    generated_paths = []
-    available_colors = random.sample(CAR_COLORS, min(count, len(CAR_COLORS)))
-    available_types = random.sample(CAR_TYPES, min(count, len(CAR_TYPES)))
-    available_settings = random.sample(WORKSHOP_SETTINGS, min(count, len(WORKSHOP_SETTINGS)))
-    available_angles = random.sample(CAMERA_ANGLES, min(count, len(CAMERA_ANGLES)))
+    if not os.path.exists(images_dir):
+        return []
 
-    print(f"\n[Image Engine] Generating {count} unique DALL-E images for '{topic_title}'...")
+    valid_extensions = ('.jpg', '.jpeg', '.png')
+    files = [
+        os.path.join(images_dir, f)
+        for f in os.listdir(images_dir)
+        if f.lower().endswith(valid_extensions) and not f.startswith('.')
+    ]
+    return files
 
-    for i in range(count):
-        color = available_colors[i % len(available_colors)]
-        car_type = available_types[i % len(available_types)]
-        setting = available_settings[i % len(available_settings)]
-        angle = available_angles[i % len(available_angles)]
 
-        dalle_prompt = (
-            f"A photorealistic, 8k ultra-detailed commercial photograph of a flawless {color} {car_type} "
-            f"{setting}, {angle}. Professional automotive commercial lighting, clean workshop background, "
-            f"sharp focus on bodywork and reflection. No text, no watermarks, no distorted logos."
-        )
+def render_title_on_top_bar(draw: ImageDraw.ImageDraw, title: str, width: int, bar_height: int, font_path: str):
+    """
+    Renders the title centered horizontally and vertically inside the top bar.
+    Dynamically adjusts font size and word wrapping (single or two lines) for maximum readability.
+    """
+    clean_title = title.strip()
+    
+    # Candidate wraps: single line or 2-line wrap
+    candidate_wraps = [
+        [clean_title],
+        textwrap.wrap(clean_title, width=int(len(clean_title) * 0.6)),
+        textwrap.wrap(clean_title, width=int(len(clean_title) * 0.45))
+    ]
 
+    max_font_size = max(18, int(bar_height * 0.48))
+    best_font = None
+    best_lines = [clean_title]
+    best_size = 14
+
+    for size in range(max_font_size, 12, -2):
         try:
-            response = client.images.generate(
-                model="dall-e-3",
-                prompt=dalle_prompt,
-                size="1024x1024",
-                quality="standard",
-                n=1
-            )
-            image_url = response.data[0].url
-            img_res = requests.get(image_url, timeout=30)
-            
-            if img_res.status_code == 200:
-                img = Image.open(BytesIO(img_res.content)).convert("RGB")
-                filename = f"generated_image_{i + 1}.jpg"
-                img.save(filename, "JPEG", quality=95)
-                generated_paths.append(filename)
-                print(f" -> Generated unique DALL-E image: {filename} ({color} {car_type})")
-            else:
-                print(f"Notice: Failed to download DALL-E image {i+1}, using template fallback.")
-        except Exception as e:
-            print(f"Notice: DALL-E generation error ({e}). Falling back to template generation.")
+            font = ImageFont.truetype(font_path, size)
+        except Exception:
+            font = ImageFont.load_default()
             break
 
-    return generated_paths
+        for lines in candidate_wraps:
+            if not lines:
+                continue
+            line_height = int(size * 1.25)
+            total_h = len(lines) * line_height
+            max_w = max(draw.textbbox((0, 0), l, font=font)[2] - draw.textbbox((0, 0), l, font=font)[0] for l in lines)
+
+            if max_w <= width * 0.92 and total_h <= bar_height * 0.85:
+                best_font = font
+                best_lines = lines
+                best_size = size
+                break
+
+        if best_font:
+            break
+
+    if not best_font:
+        best_font = get_font(18)
+        best_lines = [clean_title]
+
+    # Draw centered lines with drop shadow for crisp readability
+    line_h = int(best_size * 1.25)
+    total_text_h = len(best_lines) * line_h
+    start_y = max(4, (bar_height - total_text_h) // 2)
+
+    for line in best_lines:
+        bbox = draw.textbbox((0, 0), line, font=best_font)
+        lw = bbox[2] - bbox[0]
+        lx = (width - lw) // 2 - bbox[0]
+        
+        # Subtle shadow + pure white text
+        draw.text((lx + 1, start_y + 1), line, fill=(0, 0, 0, 180), font=best_font)
+        draw.text((lx, start_y), line, fill=(255, 255, 255, 255), font=best_font)
+        start_y += line_h
 
 
-def create_branded_template_images(title: str, count: int = 3) -> list:
+def create_unique_images(title: str, count: int = 3, use_dalle: bool = False, images_dir: str = IMAGES_DIR) -> list:
     """
-    Generates branded topic images from local templates with Montserrat-Black bold overlay.
-    Used as an immediate fallback or local generation option.
+    Pulls real photos from the `images/` directory, applies a 50% opacity black overlay
+    across the top 15% of the image height, and centers the article title in Montserrat-Black white text.
+    Saves temporary JPEG images to disk for uploading.
     """
+    valid_images = get_available_images(images_dir)
+    if len(valid_images) < count:
+        raise ValueError(f"Fewer than {count} images found in '{images_dir}'. Found {len(valid_images)}.")
+
+    selected_images = random.sample(valid_images, count)
+    font_path = ensure_font_exists() or LOCAL_FONT_PATH
     generated_paths = []
-    text_to_draw = title.upper()
 
-    for idx in range(1, count + 1):
-        template_idx = (idx - 1) % len(TEMPLATE_FILES)
-        template_name = TEMPLATE_FILES[template_idx]
-        template_path = template_name
+    print(f"\n[Image Engine] Selecting {count} real workshop photos from '{images_dir}' with top title overlay...")
 
-        if not os.path.exists(template_path):
-            template_path = TEMPLATE_FILES[0]
+    for idx, img_path in enumerate(selected_images, start=1):
+        try:
+            with Image.open(img_path) as raw_img:
+                # 1. Convert base image to RGBA to preserve full original photo colors
+                base_image = raw_img.convert("RGBA")
+                width, height = base_image.size
 
-        if not os.path.exists(template_path):
-            img = Image.new("RGB", (1280, 1024), color=(25, 25, 25))
-        else:
-            img = Image.open(template_path).convert("RGB")
+                # 2. Top 15% height calculation
+                bar_height = max(1, int(height * 0.15))
 
-        width, height = img.size
-        draw = ImageDraw.Draw(img)
+                # 3. Create transparent overlay canvas
+                overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(overlay)
 
-        # Clear top banner area
-        banner_height = 150
-        draw.rectangle([0, 0, width, banner_height], fill=(15, 15, 15))
+                # 4. Draw 50% opacity black rectangle (alpha 128) across ONLY the top 15%
+                draw.rectangle([(0, 0), (width, bar_height)], fill=(0, 0, 0, 128))
 
-        # Neat word wrapping
-        wrapped_lines = textwrap.wrap(text_to_draw, width=34)
-        if len(wrapped_lines) > 3:
-            font = get_font(30)
-            wrapped_lines = textwrap.wrap(text_to_draw, width=42)
-            line_spacing = 38
-        else:
-            font = get_font(36)
-            line_spacing = 44
+                # 5. Render centered title text in pure white
+                render_title_on_top_bar(draw, title, width, bar_height, font_path)
 
-        total_text_height = len(wrapped_lines) * line_spacing
-        start_y = max(15, (banner_height - total_text_height) // 2)
+                # 6. Alpha composite and convert to RGB
+                composite = Image.alpha_composite(base_image, overlay)
+                final_img = composite.convert("RGB")
 
-        for line in wrapped_lines:
-            bbox = draw.textbbox((0, 0), line, font=font)
-            line_w = bbox[2] - bbox[0]
-            x = (width - line_w) // 2
+                # 7. Save output JPEG
+                output_filename = f"generated_image_{idx}.jpg"
+                final_img.save(output_filename, "JPEG", quality=90)
+                generated_paths.append(output_filename)
+                print(f" -> Generated branded photo {idx}/{count}: {output_filename} (from {os.path.basename(img_path)})")
 
-            # Drop shadow and white text
-            draw.text((x + 2, start_y + 2), line, fill=(0, 0, 0), font=font)
-            draw.text((x, start_y), line, fill=(255, 255, 255), font=font)
-            start_y += line_spacing
-
-        output_filename = f"generated_image_{idx}.jpg"
-        img.save(output_filename, "JPEG", quality=95)
-        generated_paths.append(output_filename)
-        print(f" -> Generated template image: {output_filename}")
+        except Exception as e:
+            print(f"⚠️ Error processing photo {img_path}: {e}")
 
     return generated_paths
 
 
-def create_unique_images(title: str, use_dalle: bool = True) -> list:
+def process_and_upload_gallery(
+    post_topic: str,
+    wp_url: str,
+    wp_user: str,
+    wp_app_pass: str,
+    images_dir: str = IMAGES_DIR,
+    count: int = 3
+) -> str:
     """
-    Main entry point for image generation.
-    Tries DALL-E with dynamic randomized arrays; falls back to template if needed.
-    Guarantees exactly 3 unique images are returned.
+    Selects 3 random images from the local images directory, applies a 50% opacity
+    black overlay across the top 15% of the image with the post topic rendered in 
+    Montserrat-Black bold white text, and directly uploads the in-memory JPEG bytes 
+    to the WordPress Media endpoint.
+    
+    Returns a single, comma-separated string of the 3 new Media IDs (e.g., "7365,7366,7367").
     """
-    images = []
-    if use_dalle:
-        images = generate_dalle_images(title, count=3)
+    valid_images = get_available_images(images_dir)
+    if len(valid_images) < count:
+        raise ValueError(f"Fewer than {count} valid images found in '{images_dir}'. Found {len(valid_images)}.")
 
-    if len(images) < 3:
-        fallback_images = create_branded_template_images(title, count=3)
-        images = fallback_images
+    selected_images = random.sample(valid_images, count)
+    uploaded_media_ids = []
 
-    return images
+    clean_slug = re.sub(r'[^a-zA-Z0-9]+', '-', post_topic.lower()).strip('-')[:45] or "gallery-image"
+    font_path = ensure_font_exists() or LOCAL_FONT_PATH
+    media_url = f"{wp_url.rstrip('/')}/wp-json/wp/v2/media"
+    auth = HTTPBasicAuth(wp_user, wp_app_pass)
+
+    for idx, img_path in enumerate(selected_images, start=1):
+        with Image.open(img_path) as raw_img:
+            # Convert to RGBA
+            base_image = raw_img.convert("RGBA")
+            width, height = base_image.size
+
+            # Top 15% bar
+            bar_height = max(1, int(height * 0.15))
+            overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(overlay)
+            draw.rectangle([(0, 0), (width, bar_height)], fill=(0, 0, 0, 128))
+
+            render_title_on_top_bar(draw, post_topic, width, bar_height, font_path)
+
+            composite = Image.alpha_composite(base_image, overlay)
+            final_img = composite.convert("RGB")
+
+            buffer = io.BytesIO()
+            final_img.save(buffer, format="JPEG", quality=85)
+            buffer.seek(0)
+
+            filename = f"{clean_slug}-{idx}.jpg"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "image/jpeg"
+            }
+
+            response = requests.post(
+                media_url,
+                auth=auth,
+                headers=headers,
+                data=buffer.getvalue(),
+                timeout=35
+            )
+
+            if response.status_code == 201:
+                media_id = response.json().get("id")
+                uploaded_media_ids.append(str(media_id))
+                print(f" -> Uploaded gallery image {idx}/{count} (Media ID: {media_id}) from {os.path.basename(img_path)}")
+            else:
+                raise RuntimeError(
+                    f"Failed to upload image {filename} to WordPress: Status {response.status_code} - {response.text}"
+                )
+
+    gallery_ids_csv = ",".join(uploaded_media_ids)
+    return gallery_ids_csv
 
 
 def cleanup_local_images(image_paths: list) -> None:
     """
     Removes generated images locally after they have been uploaded to WordPress,
-    preventing file buildup and image looping.
+    preventing file buildup.
     """
     if not image_paths:
         return
@@ -252,5 +289,6 @@ def cleanup_local_images(image_paths: list) -> None:
 
 
 # Backward compatibility aliases
+create_branded_template_images = create_unique_images
+create_branded_images = create_unique_images
 generate_blog_images = create_unique_images
-create_branded_images = create_branded_template_images
