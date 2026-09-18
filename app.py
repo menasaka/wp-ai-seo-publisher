@@ -70,6 +70,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# Category Mapping for WordPress REST API
+CATEGORY_MAP = {
+    "Guides": 4,
+    "FAQ": 2,
+    "How to": 3,
+    "News": 5
+}
+
+
 def get_env_status():
     wp_url = os.getenv("WP_SITE_URL", "").rstrip('/')
     wp_user = os.getenv("WP_USERNAME", "")
@@ -84,6 +93,19 @@ def get_env_status():
 
 
 def main():
+    # ---------------------------------------------------------
+    # 🔒 Task 1: Password Protection Gate
+    # ---------------------------------------------------------
+    app_password = st.secrets.get("APP_PASSWORD", os.getenv("APP_PASSWORD", ""))
+    if app_password:
+        entered_password = st.text_input("🔑 Enter Access Password", type="password")
+        if not entered_password:
+            st.warning("🔒 Please enter the access password to use this application.")
+            st.stop()
+        elif entered_password != app_password:
+            st.error("❌ Incorrect password. Access denied.")
+            st.stop()
+
     env = get_env_status()
 
     # Sidebar: System Status & Settings
@@ -96,7 +118,7 @@ def main():
             st.error("WordPress credentials missing in `.env`")
 
         if env["has_openai"]:
-            st.success("OpenAI API: Connected (GPT-4o & DALL-E 3)")
+            st.success("OpenAI API: Connected (GPT-4o)")
         else:
             st.error("OpenAI API Key missing in `.env`")
 
@@ -110,27 +132,20 @@ def main():
         - **Internal Links:** 3–4 shuffled with fallback
         - **Yoast SEO:** Dynamic Meta + Phone CTA
         - **FAQ Module:** Styled Accordion + JSON-LD Schema
-        - **Post Status:** `draft` (100% Zero-Touch)
+        - **Post Status:** `publish` (Direct Live Publishing)
         """)
-
-        st.divider()
-        image_mode = st.radio(
-            "Image Generation Engine:",
-            options=["DALL-E 3 (Unique Dynamic Images)", "Local Branded Templates"],
-            index=0
-        )
-        use_dalle = "DALL-E 3" in image_mode
 
     # Main Page Header
     st.markdown('<div class="main-header">🚗 My Car Collision Center</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Zero-Touch Automated SEO Blog Generator & WordPress Publishing Pipeline</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Automated SEO Blog Generator & Direct WordPress Publishing Pipeline</div>', unsafe_allow_html=True)
 
     st.markdown(
         '<div>'
         '<span class="status-badge">OpenAI GPT-4o</span>'
-        '<span class="status-badge">DALL-E 3 Engine</span>'
+        '<span class="status-badge">Branded Photo Engine</span>'
         '<span class="status-badge">WordPress REST API</span>'
         '<span class="status-badge">Yoast SEO & Schema</span>'
+        '<span class="status-badge">Live Publishing</span>'
         '</div>',
         unsafe_allow_html=True
     )
@@ -160,7 +175,15 @@ def main():
         default_title = st.session_state.get("blog_title", "24/7 Collision Repair and Emergency Towing in Glendale & Studio City")
         title_input = st.text_input("Blog Post Title", value=default_title, placeholder="Enter exact blog post title...")
 
-        publish_clicked = st.button("🚀 Generate & Publish to WordPress", type="primary", use_container_width=True)
+        # Task 2: Dynamic Category Selection Box
+        selected_category = st.selectbox(
+            "📁 Select WordPress Category",
+            options=["Guides", "FAQ", "How to", "News"],
+            index=0
+        )
+        selected_category_id = CATEGORY_MAP[selected_category]
+
+        publish_clicked = st.button("🚀 Generate & Publish Live to WordPress", type="primary", use_container_width=True)
 
         if publish_clicked:
             if not title_input.strip():
@@ -192,14 +215,17 @@ def main():
                 progress_bar.progress(75)
                 image_paths = create_unique_images(title_input)
 
-                # Step 5: Publish to WordPress
-                status_box.info("🚀 [5/5] Uploading media, building Yoast SEO, FAQ Accordion & Schema, and publishing Draft to WordPress...")
+                # Step 5: Publish Live to WordPress
+                status_box.info("🚀 [5/5] Uploading media, building Yoast SEO, FAQ Accordion & Schema, and publishing LIVE to WordPress...")
                 progress_bar.progress(90)
                 post_data = publish_wordpress_post(
                     title=title_input,
                     content=formatted_content,
                     image_paths=image_paths,
-                    faq_items=faq_items
+                    faq_items=faq_items,
+                    category_name=selected_category,
+                    category_id=selected_category_id,
+                    status="publish"
                 )
                 progress_bar.progress(100)
 
@@ -207,29 +233,29 @@ def main():
                     status_box.empty()
                     post_id = post_data.get("id")
                     edit_url = post_data.get("edit_url", f"{env['wp_url']}/wp-admin/post.php?post={post_id}&action=edit")
-                    preview_url = post_data.get("preview_url", post_data.get("link", ""))
+                    preview_url = post_data.get("link", post_data.get("preview_url", ""))
                     yoast_desc = post_data.get("yoast_metadesc", extract_yoast_description(formatted_content))
 
                     st.markdown(f"""
                     <div class="success-card">
-                        <h3 style="color: #15803D; margin-top: 0;">🎉 Blog Post Successfully Published as DRAFT!</h3>
-                        <p><strong>Post ID:</strong> {post_id} | <strong>Status:</strong> Draft | <strong>Target Categories:</strong> Assigned</p>
+                        <h3 style="color: #15803D; margin-top: 0;">🎉 Blog Post Successfully Published LIVE!</h3>
+                        <p><strong>Post ID:</strong> {post_id} | <strong>Status:</strong> Published (Live) | <strong>Category:</strong> {selected_category} (ID: {selected_category_id})</p>
                         <p><strong>WordPress Edit URL:</strong> <a href="{edit_url}" target="_blank">{edit_url}</a></p>
-                        <p><strong>Post Preview URL:</strong> <a href="{preview_url}" target="_blank">{preview_url}</a></p>
+                        <p><strong>Live Article URL:</strong> <a href="{preview_url}" target="_blank">{preview_url}</a></p>
                     </div>
                     """, unsafe_allow_html=True)
 
                     # Quick Action Buttons
                     btn_col1, btn_col2 = st.columns(2)
                     btn_col1.link_button("📝 Open Post in WordPress Editor", edit_url, use_container_width=True)
-                    btn_col2.link_button("🌐 Open Post Preview", preview_url, use_container_width=True)
+                    btn_col2.link_button("🌐 Open Live Article", preview_url, use_container_width=True)
 
                     st.divider()
 
                     # Metrics & Review Section
                     m_col1, m_col2, m_col3, m_col4 = st.columns(4)
                     m_col1.metric("Article Words", word_count)
-                    m_col2.metric("FAQs Included", len(faq_items))
+                    m_col2.metric("Category", f"{selected_category} ({selected_category_id})")
                     m_col3.metric("Shortcodes Injected", 7)
                     m_col4.metric("Media Uploaded", len(post_data.get("media_ids", [])))
 
@@ -263,8 +289,13 @@ def main():
         st.subheader("Batch Publish from Google Sheet")
         st.markdown("Publish multiple articles in automated sequence with a safety cooldown between posts.")
         
-        sheet_id_input = st.text_input("Google Sheet ID", value=os.getenv("GOOGLE_SHEET_ID", "1kieMk1araaWljeKZh4pxwteTtm6KGeqBAwdBRaw_meE"))
-        
+        batch_col1, batch_col2 = st.columns([2, 1])
+        with batch_col1:
+            sheet_id_input = st.text_input("Google Sheet ID", value=os.getenv("GOOGLE_SHEET_ID", "1kieMk1araaWljeKZh4pxwteTtm6KGeqBAwdBRaw_meE"))
+        with batch_col2:
+            batch_cat_select = st.selectbox("Batch Category", options=["Guides", "FAQ", "How to", "News"], index=0, key="batch_cat_selector")
+            batch_cat_id = CATEGORY_MAP[batch_cat_select]
+
         if st.button("📥 Load Sheet & Start Batch Publishing", type="secondary"):
             csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id_input}/export?format=csv"
             try:
@@ -288,11 +319,19 @@ def main():
                         content = generate_article_content(topic)
                         faqs = generate_faqs(topic)
                         formatted = process_and_format_article(content)
-                        images = create_unique_images(topic, use_dalle=use_dalle)
-                        post = publish_wordpress_post(topic, formatted, images, faqs)
+                        images = create_unique_images(topic)
+                        post = publish_wordpress_post(
+                            title=topic,
+                            content=formatted,
+                            image_paths=images,
+                            faq_items=faqs,
+                            category_name=batch_cat_select,
+                            category_id=batch_cat_id,
+                            status="publish"
+                        )
                         
                         if post:
-                            st.write(f"✅ **[{idx}/{len(titles)}] Published:** {topic} — [Edit Post]({post.get('edit_url')})")
+                            st.write(f"✅ **[{idx}/{len(titles)}] Published LIVE:** {topic} — [Live Article]({post.get('link', post.get('preview_url', ''))})")
                         else:
                             st.write(f"⚠️ **[{idx}/{len(titles)}] Failed:** {topic}")
                             
@@ -301,7 +340,7 @@ def main():
                         if idx < len(titles):
                             time.sleep(5)  # Cooldown
                             
-                    batch_status.success("🏁 All batch titles processed successfully!")
+                    batch_status.success("🏁 All batch titles processed and published successfully!")
                 else:
                     st.error(f"Could not load Google Sheet (HTTP {resp.status_code}). Ensure link sharing is set to 'Anyone with the link can view'.")
             except Exception as e:

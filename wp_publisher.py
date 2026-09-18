@@ -241,10 +241,11 @@ def publish_wordpress_post(
     faq_items: list = None,
     category_name: str = "Guides",
     category_id: int = None,
-    gallery_ids_csv: str = None
+    gallery_ids_csv: str = None,
+    status: str = "publish"
 ):
     """
-    Publishes the blog post to WordPress strictly as a DRAFT.
+    Publishes the blog post to WordPress directly as PUBLISHED.
     
     1. FEATURED IMAGE BINDING:
        - Uploads images to WordPress Media Library first or uses provided gallery Media IDs.
@@ -259,9 +260,9 @@ def publish_wordpress_post(
        - Maps the schema script directly to top-level key 'custom_faq_schema'.
        - Strictly excludes raw schema from body content.
        
-    4. YOAST SEO METADATA & CLEAN DRAFT STATUS:
+    4. YOAST SEO METADATA & LIVE PUBLISH STATUS:
        - Sets Yoast SEO title and dynamic meta description.
-       - Sets status to 'draft' and assigns target category.
+       - Sets status to 'publish' and assigns target category.
        - Cleans up temporary local images after upload.
     """
     posts_url = f"{WP_URL}/wp-json/wp/v2/posts"
@@ -312,7 +313,7 @@ def publish_wordpress_post(
     payload = {
         'title': title,
         'content': clean_body,
-        'status': 'draft',  # CRITICAL: Always published as draft
+        'status': status,  # Published live immediately ('publish')
         'featured_media': featured_media_id,  # Direct Featured Image Binding
         'categories': [target_category_id],
         # --- Top-Level Custom Keys for Theme Interceptor Snippet ---
@@ -343,11 +344,11 @@ def publish_wordpress_post(
             edit_url = f"{WP_URL}/wp-admin/post.php?post={post_id}&action=edit"
             preview_url = post_data.get('link', '')
 
-            print(f"\n✅ Post successfully published as DRAFT! (Post ID: {post_id})")
+            print(f"\n✅ Post successfully published LIVE! (Post ID: {post_id}, Status: {status})")
             print(f"🖼️ Featured Media ID      : {featured_media_id}")
             print(f"📁 Category Assigned      : ID {target_category_id} ({category_name})")
             print(f"📝 WordPress Edit URL     : {edit_url}")
-            print(f"🌐 Post Preview URL       : {preview_url}")
+            print(f"🌐 Post Live URL          : {preview_url}")
 
             # --- Second Request: Force-Update Custom Fields via Custom Endpoint ---
             force_meta_url = f"{WP_URL}/wp-json/custom/v1/force-meta/{post_id}"
