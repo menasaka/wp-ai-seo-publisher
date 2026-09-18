@@ -13,12 +13,18 @@ load_dotenv()
 
 # Automatically bridge Streamlit Cloud Secrets into environment variables
 try:
-    if hasattr(st, "secrets"):
-        for k, v in st.secrets.items():
-            if isinstance(v, str):
-                os.environ[k] = v
+    for k, v in st.secrets.items():
+        if isinstance(v, str):
+            os.environ[k] = v
 except Exception:
     pass
+
+# Safe secrets lookup helper
+def get_secret(key: str, default: str = "") -> str:
+    try:
+        return st.secrets[key]
+    except Exception:
+        return os.getenv(key, default)
 
 # Page configuration
 st.set_page_config(
@@ -96,7 +102,7 @@ def main():
     # ---------------------------------------------------------
     # 🔒 Task 1: Password Protection Gate
     # ---------------------------------------------------------
-    app_password = st.secrets.get("APP_PASSWORD", os.getenv("APP_PASSWORD", ""))
+    app_password = get_secret("APP_PASSWORD", "")
     if app_password:
         entered_password = st.text_input("🔑 Enter Access Password", type="password")
         if not entered_password:
