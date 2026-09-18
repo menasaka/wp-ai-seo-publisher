@@ -183,7 +183,10 @@ def create_unique_images(title: str, count: int = 3, use_dalle: bool = False, im
                 final_img = composite.convert("RGB")
 
                 # 7. Save output JPEG
-                output_filename = f"generated_image_{idx}.jpg"
+                # Creates a clean, lowercase URL slug from the title (max 60 chars)
+                clean_slug = re.sub(r'[^a-zA-Z0-9]+', '-', title.lower()).strip('-')[:60]
+                
+                output_filename = f"{clean_slug}-{idx}.jpg"
                 final_img.save(output_filename, "JPEG", quality=90)
                 generated_paths.append(output_filename)
                 print(f" -> Generated branded photo {idx}/{count}: {output_filename} (from {os.path.basename(img_path)})")
