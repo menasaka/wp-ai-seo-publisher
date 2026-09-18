@@ -241,6 +241,7 @@ def publish_wordpress_post(
     faq_items: list = None,
     category_name: str = "Guides",
     category_id: int = None,
+    category_ids: list = None,
     gallery_ids_csv: str = None,
     status: str = "publish"
 ):
@@ -262,16 +263,22 @@ def publish_wordpress_post(
        
     4. YOAST SEO METADATA & LIVE PUBLISH STATUS:
        - Sets Yoast SEO title and dynamic meta description.
-       - Sets status to 'publish' and assigns target category.
+       - Sets status to 'publish' and assigns target categories.
        - Cleans up temporary local images after upload.
     """
     posts_url = f"{WP_URL}/wp-json/wp/v2/posts"
 
-    # Step 1: Dynamically resolve category ID (defaults to 'Guides' / ID 4)
-    if category_id is not None and int(category_id) != 1:
-        target_category_id = int(category_id)
-    else:
-        target_category_id = get_or_create_category(category_name or "Guides")
+    # Step 1: Dynamically resolve category IDs (supports multiple selections)
+    target_category_ids = []
+    if category_ids:
+        target_category_ids = [int(c) for c in category_ids if int(c) != 1]
+    elif category_id is not None and int(category_id) != 1:
+        target_category_ids = [int(category_id)]
+    elif category_name:
+        target_category_ids = [get_or_create_category(category_name)]
+
+    if not target_category_ids:
+        target_category_ids = [4]  # Default to Guides (ID: 4)
 
     # Step 2: Handle Media IDs from either gallery_ids_csv or image_paths
     if gallery_ids_csv:
@@ -309,13 +316,13 @@ def publish_wordpress_post(
     yoast_title = title
     yoast_metadesc = extract_yoast_description(content)
 
-    # Step 5: Build WordPress Post Payload with top-level custom keys for PHP server interceptor
+    # Step 5: Build WordPress Post Payload with multiple category IDs
     payload = {
         'title': title,
         'content': clean_body,
         'status': status,  # Published live immediately ('publish')
         'featured_media': featured_media_id,  # Direct Featured Image Binding
-        'categories': [target_category_id],
+        'categories': target_category_ids,
         # --- Top-Level Custom Keys for Theme Interceptor Snippet ---
         'custom_grid_images': media_ids_csv,
         'custom_faq_schema': schema_script,
@@ -346,7 +353,7 @@ def publish_wordpress_post(
 
             print(f"\n✅ Post successfully published LIVE! (Post ID: {post_id}, Status: {status})")
             print(f"🖼️ Featured Media ID      : {featured_media_id}")
-            print(f"📁 Category Assigned      : ID {target_category_id} ({category_name})")
+            print(f"📁 Categories Assigned    : IDs {target_category_ids} ({category_name})")
             print(f"📝 WordPress Edit URL     : {edit_url}")
             print(f"🌐 Post Live URL          : {preview_url}")
 
@@ -384,7 +391,8 @@ def publish_wordpress_post(
             post_data['yoast_metadesc'] = yoast_metadesc
             post_data['media_ids'] = media_ids
             post_data['featured_media_id'] = featured_media_id
-            post_data['category_id'] = target_category_id
+            post_data['category_ids'] = target_category_ids
+            post_data['category_id'] = target_category_ids[0] if target_category_ids else 4
             post_data['schema_script'] = schema_script
 
             return post_data

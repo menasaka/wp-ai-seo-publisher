@@ -181,13 +181,18 @@ def main():
         default_title = st.session_state.get("blog_title", "24/7 Collision Repair and Emergency Towing in Glendale & Studio City")
         title_input = st.text_input("Blog Post Title", value=default_title, placeholder="Enter exact blog post title...")
 
-        # Task 2: Dynamic Category Selection Box
-        selected_category = st.selectbox(
-            "📁 Select WordPress Category",
+        # Dynamic Multiple Category Selection
+        selected_categories = st.multiselect(
+            "📁 Select WordPress Categories",
             options=["Guides", "FAQ", "How to", "News"],
-            index=0
+            default=["Guides"],
+            help="Select one or multiple categories to assign to this post."
         )
-        selected_category_id = CATEGORY_MAP[selected_category]
+        if not selected_categories:
+            selected_categories = ["Guides"]
+        selected_category_ids = [CATEGORY_MAP[c] for c in selected_categories if c in CATEGORY_MAP]
+        if not selected_category_ids:
+            selected_category_ids = [4]
 
         publish_clicked = st.button("🚀 Generate & Publish Live to WordPress", type="primary", use_container_width=True)
 
@@ -229,8 +234,8 @@ def main():
                     content=formatted_content,
                     image_paths=image_paths,
                     faq_items=faq_items,
-                    category_name=selected_category,
-                    category_id=selected_category_id,
+                    category_name=", ".join(selected_categories),
+                    category_ids=selected_category_ids,
                     status="publish"
                 )
                 progress_bar.progress(100)
@@ -245,7 +250,7 @@ def main():
                     st.markdown(f"""
                     <div class="success-card">
                         <h3 style="color: #15803D; margin-top: 0;">🎉 Blog Post Successfully Published LIVE!</h3>
-                        <p><strong>Post ID:</strong> {post_id} | <strong>Status:</strong> Published (Live) | <strong>Category:</strong> {selected_category} (ID: {selected_category_id})</p>
+                        <p><strong>Post ID:</strong> {post_id} | <strong>Status:</strong> Published (Live) | <strong>Categories:</strong> {', '.join(selected_categories)} (IDs: {', '.join(map(str, selected_category_ids))})</p>
                         <p><strong>WordPress Edit URL:</strong> <a href="{edit_url}" target="_blank">{edit_url}</a></p>
                         <p><strong>Live Article URL:</strong> <a href="{preview_url}" target="_blank">{preview_url}</a></p>
                     </div>
@@ -261,7 +266,7 @@ def main():
                     # Metrics & Review Section
                     m_col1, m_col2, m_col3, m_col4 = st.columns(4)
                     m_col1.metric("Article Words", word_count)
-                    m_col2.metric("Category", f"{selected_category} ({selected_category_id})")
+                    m_col2.metric("Categories", ", ".join(selected_categories))
                     m_col3.metric("Shortcodes Injected", 7)
                     m_col4.metric("Media Uploaded", len(post_data.get("media_ids", [])))
 
@@ -299,8 +304,18 @@ def main():
         with batch_col1:
             sheet_id_input = st.text_input("Google Sheet ID", value=os.getenv("GOOGLE_SHEET_ID", "1kieMk1araaWljeKZh4pxwteTtm6KGeqBAwdBRaw_meE"))
         with batch_col2:
-            batch_cat_select = st.selectbox("Batch Category", options=["Guides", "FAQ", "How to", "News"], index=0, key="batch_cat_selector")
-            batch_cat_id = CATEGORY_MAP[batch_cat_select]
+            batch_cat_select = st.multiselect(
+                "Batch Categories",
+                options=["Guides", "FAQ", "How to", "News"],
+                default=["Guides"],
+                key="batch_cat_selector",
+                help="Select one or multiple categories for all batch posts."
+            )
+            if not batch_cat_select:
+                batch_cat_select = ["Guides"]
+            batch_cat_ids = [CATEGORY_MAP[c] for c in batch_cat_select if c in CATEGORY_MAP]
+            if not batch_cat_ids:
+                batch_cat_ids = [4]
 
         if st.button("📥 Load Sheet & Start Batch Publishing", type="secondary"):
             csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id_input}/export?format=csv"
@@ -331,8 +346,8 @@ def main():
                             content=formatted,
                             image_paths=images,
                             faq_items=faqs,
-                            category_name=batch_cat_select,
-                            category_id=batch_cat_id,
+                            category_name=", ".join(batch_cat_select),
+                            category_ids=batch_cat_ids,
                             status="publish"
                         )
                         
